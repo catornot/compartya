@@ -1,0 +1,20 @@
+[package]
+name = "compartya-plugin"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rrplug = { git = "https://github.com/R2NorthstarTools/rrplug.git" }
+compartya-shared = { path = "../compartya-shared" }
+laminar = "0.5.0"
+nanoid = "0.4.0"
+parking_lot = "0.12.1"
+crossbeam-channel = "0.5"
+
+[build-dependencies]
+windres = "0.2.2"
+
+[lib]
+crate-type = ["cdylib"]

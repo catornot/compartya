@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+      "compartya-server",
+      "compartya-plugin",
+      "compartya-shared",
+]

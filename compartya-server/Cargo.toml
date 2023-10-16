@@ -1,0 +1,15 @@
+[package]
+name = "compartya-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+laminar = "0.5.0"
+serde = { version = "1.0.188", features = ["derive"] }
+compartya-shared = { path = "../compartya-shared" }
+nanoid = "0.4.0"
+crossbeam-channel = "0.5"
+simple_logger = "4.2.0"
+log = "0.4.20"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
