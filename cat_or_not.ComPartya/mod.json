@@ -1,0 +1,13 @@
+{
+    "Name": "cat_or_not.ComPartya",
+    "Description": "",
+    "Version": "1.0.0",
+    "LoadPriority": 1,
+    "ConVars": [],
+    "Scripts": [
+        {
+            "Path": "force_join.gnut",
+            "RunOn": "UI"
+        }
+    ]
+}

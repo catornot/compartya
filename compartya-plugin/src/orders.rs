@@ -31,6 +31,8 @@ struct ServerInfo {
 
 pub fn register_functions(plugin_data: &PluginData) {
     plugin_data.register_sq_functions(connected_to_server);
+    plugin_data.register_sq_functions(sq_log_error);
+    plugin_data.register_sq_functions(sq_log_info);
 }
 
 pub fn init_order_capture(handle: &CSquirrelVMHandle) {
@@ -95,5 +97,17 @@ fn connected_to_server(server_info: ServerInfo) {
             server_info.id,
         )));
 
+    Ok(())
+}
+
+#[rrplug::sqfunction(VM = "UI", ExportName = "CompartyaLogInfo")]
+fn sq_log_info(log_msg: String) {
+    log::info!("{log_msg}");
+    Ok(())
+}
+
+#[rrplug::sqfunction(VM = "UI", ExportName = "CompartyaLogError")]
+fn sq_log_error(log_msg: String) {
+    log::error!("{log_msg}");
     Ok(())
 }

@@ -1,7 +1,7 @@
 use bindings::{EngineFunctions, HostState, ENGINE_FUNCTIONS};
 use compartya_shared::{LobbyUid, Order, Password, PlayerUid};
 use parking_lot::Mutex;
-use rrplug::prelude::*;
+use rrplug::{async_call_sq_function, prelude::*};
 use std::{
     env,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -110,7 +110,9 @@ impl Plugin for ComPartyaPlugin {
 
         match recved {
             LocalMessage::ExecuteOrder(order) => match order {
-                Order::JoinServer(_) => todo!(),
+                Order::JoinServer(id) => {
+                    async_call_sq_function!(ScriptVmType::Ui, "CompartyaJoinServer", id)
+                }
                 Order::LeaveServer => unsafe {
                     let host_state = ENGINE_FUNCTIONS
                         .wait()
