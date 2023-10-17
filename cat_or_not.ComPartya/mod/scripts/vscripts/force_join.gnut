@@ -1,11 +1,11 @@
 global function CompartyaJoinServer
 
-void function CompartyaJoinServer(serverId string)
+void function CompartyaJoinServer(string serverId)
 {   
     thread JoinServerThreaded( serverId )
 }
 
-void function JoinServerThreaded(serverId string)
+void function JoinServerThreaded(string serverId)
 {
 	NSRequestServerList()
 
