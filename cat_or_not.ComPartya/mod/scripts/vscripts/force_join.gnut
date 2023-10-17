@@ -48,7 +48,7 @@ void function JoinServerThreaded(string serverId)
     
     if ( NSWasAuthSuccessful() )
 	{
-        LoadRequiredMods()
+        LoadRequiredMods(server.requiredMods)
         
         NSConnectToAuthedServer()
     } 
@@ -122,7 +122,7 @@ bool function VerifyMods( ServerInfo server )
     return true
 }
 
-void function LoadRequiredMods()
+void function LoadRequiredMods(array<RequiredModInfo> requiredMods)
 {  
     bool modsChanged = false
 
@@ -133,7 +133,7 @@ void function LoadRequiredMods()
 		{
 			// find the mod name in the list of server required mods
 			bool found = false
-			foreach ( RequiredModInfo mod in file.lastSelectedServer.requiredMods )
+			foreach ( RequiredModInfo mod in requiredMods )
 			{
 				if (mod.name == modName)
 				{
@@ -151,7 +151,7 @@ void function LoadRequiredMods()
 	}
 
 	// enable all RequiredOnClient mods that are required by the server and are currently disabled
-	foreach ( RequiredModInfo mod in file.lastSelectedServer.requiredMods )
+	foreach ( RequiredModInfo mod in requiredMods )
 	{
 		if ( NSIsModRequiredOnClient( mod.name ) && !NSIsModEnabled( mod.name ))
 		{

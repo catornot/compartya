@@ -7,7 +7,7 @@
     "Scripts": [
         {
             "Path": "force_join.gnut",
-            "RunOn": "UI && MP"
+            "RunOn": "UI"
         }
     ]
 }
