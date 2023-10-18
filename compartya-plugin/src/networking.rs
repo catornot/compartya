@@ -70,6 +70,10 @@ pub fn run_connections(
                     state = ConnectionState::User(User::default());
                 }
                 (LocalMessage::NewOrder(order), ConnectionState::Host(host)) => {
+                    log::info!("sending order : {order:?}");
+
+                    host.last_order = order.clone();
+
                     host.clients
                         .iter()
                         .map(|(addr, id)| {
@@ -84,7 +88,7 @@ pub fn run_connections(
                             Some((
                                 maybe_err
                                     .map_err(|err| {
-                                        _ = log::info!("failed to build order packet {err}")
+                                        _ = log::warn!("failed to build order packet {err}")
                                     })
                                     .ok()?,
                                 addr,
@@ -175,21 +179,25 @@ pub fn run_connections(
                 }
             }
             (SocketEvent::Connect(_), ConnectionState::User(_)) => {}
-            (SocketEvent::Connect(addr), _) => log::info!("{} connected", addr),
+            (SocketEvent::Connect(_), _) => {}
             (SocketEvent::Timeout(_), _) => {}
             (SocketEvent::Disconnect(addr), ConnectionState::User(user)) => {
                 // log::warn!("{} disconnected", addr);
 
                 if user.server == Some(addr) {
+                    log::warn!("disconnected from lobby");
                     user.server = None
                 }
             }
             (SocketEvent::Disconnect(addr), ConnectionState::Host(host)) => {
-                log::warn!("{} disconnected", addr);
+                if let Some(conn) = host.clients.iter().find(|(a, _)| addr == *a) {
+                    log::info!("{} disconnect", conn.1.into_iter().collect::<String>());
+                }
 
                 remove_from_host(host, &addr);
 
                 if addr == MATCHMAKING_SERVER_ADDR {
+                    log::warn!("disconnected from stun server");
                     host.lobby_id = None
                 }
             }
@@ -245,17 +253,23 @@ fn process_message_host(
                     .try_into()?,
             ));
         }
+        (PacketMessage::NewClient(addr), None) => {
+            _ = send_socket.send(Packet::reliable_unordered(
+                addr,
+                PacketMessage::VibeCheck.send().try_into()?,
+            ))
+        }
         (PacketMessage::Ping(Some(uid)), Some(conn)) => {
             if uid != conn.1 {
                 return Err(PartyaError::IllegalUid(conn.1, conn.0));
             }
 
-            _ = send_socket.send(Packet::unreliable(
+            _ = send_socket.send(Packet::reliable_unordered(
                 addr,
                 PacketResponse::Pong.send().try_into()?,
             ))
         } // should limit this
-        _ => log::warn!("received a unexpected host message packet"),
+        (msg, _) => log::warn!("received a unexpected host message packet {msg:?}"),
     }
 
     Ok(())
@@ -273,12 +287,13 @@ fn process_message_user(
             .send(LocalMessage::ExecuteOrder(order))
             .expect("somehow a channel broke"),
         PacketMessage::Ping(Some(uid)) if uid == state.uid => {
-            _ = send_socket.send(Packet::unreliable(
+            _ = send_socket.send(Packet::reliable_unordered(
                 addr,
                 PacketResponse::Pong.send().try_into()?,
             ))
         }
-        _ => log::warn!("received a unexpected user message packet"),
+        PacketMessage::VibeCheck => {} // shouldn't hit this but just in case
+        msg => log::warn!("received a unexpected user message packet {msg:?}"),
     }
 
     Ok(())
@@ -346,8 +361,12 @@ fn process_response(
                 _ = send_ping.send((addr, Some(user.uid)));
             }
         } // pong comfirmed
-        (_, ConnectionState::User(_)) => log::warn!("received a unexpected user message packet"),
-        (_, ConnectionState::Host(_)) => log::warn!("received a unexpected host message packet"),
+        (r, ConnectionState::User(_)) => {
+            log::warn!("received a unexpected user response packet {r:?}")
+        }
+        (r, ConnectionState::Host(_)) => {
+            log::warn!("received a unexpected host response packet {r:?}")
+        }
     }
 
     Ok(())
@@ -365,9 +384,9 @@ pub fn run_ping_thread(
     recv_ping: Receiver<(SocketAddr, Option<PlayerUid>)>,
 ) {
     while let Ok(ping) = recv_ping.recv() {
-        wait(1000);
+        wait(500);
 
-        _ = send_socket.send(Packet::unreliable(
+        _ = send_socket.send(Packet::reliable_unordered(
             ping.0,
             PacketMessage::Ping(ping.1).send().try_into().unwrap(),
         ))

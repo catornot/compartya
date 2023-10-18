@@ -1,11 +1,73 @@
 global function CompartyaJoinServer
+global function CompartyaFindServerByName
 
-void function CompartyaJoinServer(string serverId)
+void function CompartyaJoinServer( string serverId, string password )
 {   
-    thread JoinServerThreaded( serverId )
+    thread JoinServerThreaded( serverId, password )
 }
 
-void function JoinServerThreaded(string serverId)
+void function CompartyaFindServerByName( string serverName )
+{   
+    thread CompartyaFindServerByNameThreaded( serverName )
+}
+
+void function JoinServerThreaded( string serverId, string password )
+{
+  wait 5 // maybe also wait for the lobby to load?
+  
+	NSRequestServerList()
+
+	while ( NSIsRequestingServerList() )
+	{
+	    WaitFrame() 
+	}
+    
+
+  bool found = false
+  int serverIndex = 0
+  ServerInfo server
+    
+	foreach ( s in NSGetGameServers() )
+	{
+		if ( s.id == serverId )
+		// if ( s.name == serverId )
+		{
+			server = s
+			found = true
+      break
+		}       
+		serverIndex++
+	}
+
+	if ( !found || !VerifyMods(server) )
+	{
+		return
+	}
+    
+  CompartyaLogInfo( "connecting to " + server.name ) 
+
+  NSTryAuthWithServer( serverIndex, password )
+
+    
+  while ( NSIsAuthenticatingWithServer() )
+	{
+		WaitFrame()
+	}
+    
+    
+  if ( NSWasAuthSuccessful() )
+	{
+    LoadRequiredMods(server.requiredMods)
+        
+    NSConnectToAuthedServer()
+  } 
+  else 
+  {
+    CompartyaLogError( "failed to auth with server : " + NSGetAuthFailReason() )
+  }
+}
+
+void function CompartyaFindServerByNameThreaded( string serverName )
 {
 	NSRequestServerList()
 
@@ -15,13 +77,13 @@ void function JoinServerThreaded(string serverId)
 	}
     
 
-    bool found = false
-    int serverIndex = 0
-    ServerInfo server
+  bool found = false
+  int serverIndex = 0
+  ServerInfo server
     
 	foreach ( s in NSGetGameServers() )
 	{
-		if ( s.id == serverId )
+		if ( s.name == serverName )
 		{
 			serverIndex++
 			server = s
@@ -30,32 +92,13 @@ void function JoinServerThreaded(string serverId)
 		}       
 	}
 
-	if ( !found || !VerifyMods(server) )
+	if ( !found )
 	{
+    CompartyaLogError( "couldn't find server" ) 
 		return
 	}
     
-    CompartyaLogInfo( "connecting to " + server.name ) 
-
-    NSTryAuthWithServer( serverIndex, "" )
-
-    
-    while ( NSIsAuthenticatingWithServer() )
-	{
-		WaitFrame()
-	}
-    
-    
-    if ( NSWasAuthSuccessful() )
-	{
-        LoadRequiredMods(server.requiredMods)
-        
-        NSConnectToAuthedServer()
-    } 
-    else 
-    {
-        CompartyaLogError( "failed to auth with server : " + NSGetAuthFailReason() )
-    }
+  CompartyaLogInfo( "found server id is " + server.id ) 
 }
 
 bool function VerifyMods( ServerInfo server )

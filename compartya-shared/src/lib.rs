@@ -7,7 +7,7 @@ pub type PlayerUid = [char; 5];
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Default)]
 pub enum Order {
-    JoinServer(String),
+    JoinServer(String, String),
 
     #[default]
     LeaveServer,
@@ -39,11 +39,13 @@ pub enum PacketMessage {
     // server
     FindLobby(LobbyUid),
     CreateLobby,
+    NewClient(SocketAddr),
 
     // plugin
     Auth(Password),
     GetLastOrder(PlayerUid),
     NewOrder(PlayerUid, Order),
+    VibeCheck,
 
     // general
     Ping(Option<PlayerUid>),

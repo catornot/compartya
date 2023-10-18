@@ -3,7 +3,7 @@ use rrplug::{
 };
 use std::sync::OnceLock;
 
-use crate::{exports::PLUGIN, LocalMessage};
+use crate::{bindings::ENGINE_FUNCTIONS, exports::PLUGIN, LocalMessage};
 
 static ORIGINAL_DISCONNECT: OnceLock<
     unsafe extern "C" fn(*const rrplug::bindings::cvar::command::CCommand),
@@ -83,6 +83,27 @@ fn host_lobby(cmd: CCommandResult) -> Option<()> {
 
 #[rrplug::concommand]
 fn connect_to_lobby(cmd: CCommandResult) -> Option<()> {
+    let host_state = unsafe {
+        ENGINE_FUNCTIONS
+            .wait()
+            .host_state
+            .as_mut()
+            .expect("host state should be valid")
+    };
+
+    let level_name = host_state
+        .level_name
+        .iter()
+        .cloned()
+        .filter(|i| *i != 0)
+        .filter_map(|i| char::from_u32(i as u32))
+        .collect::<String>();
+
+    if level_name != "mp_lobby" {
+        log::error!("you must run this command from mp_lobbby");
+        return None;
+    }
+
     let Some(lobby_id) = cmd.get_arg(0).map(|s| s.to_string()) else {
         log::warn!("the lobby id must be 8 chars in lenght");
         return None;

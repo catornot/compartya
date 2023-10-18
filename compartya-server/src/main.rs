@@ -80,12 +80,18 @@ fn process_message(
 
     match (msg, lobby) {
         (PacketMessage::FindLobby(lobby_id), None) => {
-            let Some(lobby) = server
-                .lobby_connections
-                .iter()
-                .find(|(id, _)| *id == lobby_id)
-            else {
-                log::error!("didn't find lobby for {addr}");
+            log::info!("requesting lobby {} ", lobby_id.iter().collect::<String>());
+
+            let Some(lobby) = server.lobby_connections.iter().find(|(id, _)| {
+                !id.iter()
+                    .cloned()
+                    .zip(lobby_id.clone().into_iter())
+                    .any(|(c1, c2)| c1 != c2)
+            }) else {
+                log::error!(
+                    "didn't find lobby {} for {addr}",
+                    lobby_id.iter().collect::<String>()
+                );
 
                 _ = send_socket.send(Packet::reliable_unordered(
                     addr,
@@ -97,18 +103,26 @@ fn process_message(
             log::info!("found lobby for {addr}");
 
             _ = send_socket.send(Packet::reliable_unordered(
+                lobby.1,
+                PacketMessage::NewClient(addr).send().try_into()?,
+            ));
+
+            _ = send_socket.send(Packet::reliable_unordered(
                 addr,
                 PacketResponse::FoundLobby(lobby.1).send().try_into()?,
             ));
         }
         (PacketMessage::CreateLobby, None) => {
-            let id = nanoid::nanoid!(8)
+            let id: LobbyUid = nanoid::nanoid!(8)
                 .chars()
                 .collect::<Vec<char>>()
                 .try_into()
                 .expect("can't fail to collect a 5 len vec into a 5 len array");
 
-            log::info!("creating lobby for {addr}");
+            log::info!(
+                "creating lobby {} for {addr}",
+                id.iter().collect::<String>()
+            );
 
             server.lobby_connections.push((id, addr));
 
@@ -118,7 +132,7 @@ fn process_message(
             ))
         }
         (PacketMessage::Ping(_), Some(_)) => {
-            _ = send_socket.send(Packet::unreliable(
+            _ = send_socket.send(Packet::reliable_unordered(
                 addr,
                 PacketResponse::Pong.send().try_into()?,
             ))

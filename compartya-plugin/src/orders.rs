@@ -89,12 +89,18 @@ pub fn init_order_capture(handle: &CSquirrelVMHandle) {
 fn connected_to_server(server_info: ServerInfo) {
     log::info!("joined server : {}", server_info.name);
 
+    if server_info.requires_password {
+        log::warn!("people won't be able to join your server since it has a password");
+        // todo share the password
+    }
+
     _ = crate::PLUGIN
         .wait()
         .send_runframe
         .lock()
         .send(LocalMessage::NewOrder(compartya_shared::Order::JoinServer(
             server_info.id,
+            "".into(), // server_info.requires_password.then()
         )));
 
     Ok(())

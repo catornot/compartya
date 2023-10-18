@@ -16,8 +16,8 @@ mod orders;
 
 // pub const MATCHMAKING_SERVER_ADDR: SocketAddr =
 //     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 2000));
-pub const MATCHMAKING_SERVER_ADDR: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 243), 2000));
+// pub const MATCHMAKING_SERVER_ADDR: SocketAddr =
+// SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 243), 2000));
 
 pub enum LocalMessage {
     ExecuteOrder(Order),
@@ -62,21 +62,26 @@ impl Plugin for ComPartyaPlugin {
         let (send_runframe, recv) = mpsc::channel();
         let (send, recv_runframe) = mpsc::channel();
 
+        const IP_STRING: &'static str = "compartya_ip";
+        const PORT_STRING: &'static str = "compartya_port";
+
         let args = env::args()
             .zip(env::args().skip(1))
-            .filter(|(name, _)| name == "compartya_ip" || name == "compartya_port")
+            .filter(|(name, _)| name == IP_STRING || name == PORT_STRING)
             .collect::<Vec<(String, String)>>();
 
         const DEFAULT_PORT: &str = ":12352";
 
+        log::info!("collected {args:#?}\n real {:#?}", env::args());
+
         let addr = args
             .iter()
-            .find(|(name, _)| name == "compartya_ip")
+            .find(|(name, _)| name == IP_STRING)
             .map(|(_, arg)| arg.to_owned())
-            .unwrap_or(get_local_ip())
+            .unwrap_or_else(get_local_ip)
             + &args
                 .iter()
-                .find(|(name, _)| name == "compartya_port")
+                .find(|(name, _)| name == PORT_STRING)
                 .map(|(_, arg)| ":".to_string() + arg)
                 .unwrap_or(DEFAULT_PORT.to_string());
 
@@ -112,8 +117,8 @@ impl Plugin for ComPartyaPlugin {
 
         match recved {
             LocalMessage::ExecuteOrder(order) => match order {
-                Order::JoinServer(id) => {
-                    async_call_sq_function!(ScriptVmType::Ui, "CompartyaJoinServer", id)
+                Order::JoinServer(id, password) => {
+                    async_call_sq_function!(ScriptVmType::Ui, "CompartyaJoinServer", id, password)
                 }
                 Order::LeaveServer => unsafe {
                     let host_state = ENGINE_FUNCTIONS
@@ -121,6 +126,19 @@ impl Plugin for ComPartyaPlugin {
                         .host_state
                         .as_mut()
                         .expect("host state should be valid");
+
+                    let level_name = host_state
+                        .level_name
+                        .iter()
+                        .cloned()
+                        .filter(|i| *i != 0)
+                        .filter_map(|i| char::from_u32(i as u32))
+                        .collect::<String>();
+
+                    if level_name == "mp_lobby" {
+                        log::info!("already in mp_lobby");
+                        return;
+                    }
 
                     host_state.next_state = HostState::HsNewGame;
                     set_c_char_array(&mut host_state.level_name, "mp_lobby");
@@ -144,7 +162,7 @@ fn get_local_ip() -> String {
     String::from_utf8_lossy(&cmd_result)
         .to_string()
         .split('\n')
-        .filter(|line| line.contains("  IPv4 Address"))
+        .filter(|line| line.contains("IPv4 Address"))
         .filter_map(|line| line.split(':').nth(1))
         .map(|addr| addr.trim().trim_end())
         .last()
