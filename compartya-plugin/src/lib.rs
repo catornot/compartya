@@ -14,10 +14,8 @@ mod commands;
 mod networking;
 mod orders;
 
-// pub const MATCHMAKING_SERVER_ADDR: SocketAddr =
-//     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 2000));
-// pub const MATCHMAKING_SERVER_ADDR: SocketAddr =
-// SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 243), 2000));
+pub const MATCHMAKING_SERVER_ADDR: SocketAddr =
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 243), 2000));
 
 pub enum LocalMessage {
     ExecuteOrder(Order),

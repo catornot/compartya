@@ -2,8 +2,11 @@ use compartya_shared::{LobbyUid, PacketMessage, PacketResponse, PartyaError, Sen
 use laminar::{Config, Packet, Socket, SocketEvent};
 use std::{net::SocketAddr, time::Duration};
 
-const SERVER_ADDR: &str = "192.168.0.243:2000";
-// const SERVER_ADDR: &str = "127.0.0.1:2000";
+#[cfg(target_os = "linux")]
+const SERVER_ADDR: &str = "0.0.0.0";
+
+#[cfg(not(target_os = "linux"))]
+const SERVER_ADDR: &str = "192.168.0.243";
 
 #[derive(Default, Debug)]
 pub struct Server {
@@ -15,8 +18,13 @@ pub fn main() -> Result<(), ()> {
 
     let mut server = Server::default();
 
+    let addr = format!(
+        "{SERVER_ADDR}:{}",
+        std::env::var("PORT").unwrap_or("2000".to_string())
+    );
+
     let mut socket = Socket::bind_with_config(
-        SERVER_ADDR,
+        &addr,
         Config {
             idle_connection_timeout: Duration::from_secs(5),
             ..Default::default()
@@ -26,7 +34,7 @@ pub fn main() -> Result<(), ()> {
     let (send_socket, recv_socket) = (socket.get_packet_sender(), socket.get_event_receiver());
     std::thread::spawn(move || socket.start_polling());
 
-    log::info!("got a socket connection {SERVER_ADDR}");
+    log::info!("got a socket connection {addr}");
 
     loop {
         let Ok(event) = recv_socket.recv() else {
