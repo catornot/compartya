@@ -16,5 +16,5 @@ COPY . .
 RUN cargo build --package compartya-server --release
 
 FROM rust:1.72-slim AS compartya
-COPY --from=builder /app/target/debug/compartya-server /usr/local/bin
+COPY --from=builder /app/target/release/compartya-server /usr/local/bin
 ENTRYPOINT ["/usr/local/bin/compartya-server"]
