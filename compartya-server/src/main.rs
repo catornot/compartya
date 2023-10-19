@@ -19,7 +19,8 @@ pub fn main() -> Result<(), ()> {
     let mut server = Server::default();
 
     let addr = format!(
-        "{SERVER_ADDR}:{}",
+        "{}:{}",
+        std::env::var("SERVER_ADDR").unwrap_or(SERVER_ADDR.to_string()),
         std::env::var("PORT").unwrap_or("2000".to_string())
     );
 
