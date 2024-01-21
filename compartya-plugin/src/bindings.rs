@@ -44,23 +44,23 @@ pub enum CmdSource {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum EcommandTarget {
-    CbufFirstPlayer = 0,
-    CbufLastPlayer = 1,
-    CbufServer = 2,
+    FirstPlayer = 0,
+    LastPlayer = 1,
+    Server = 2,
 
-    CbufCount,
+    Count,
 }
 
 #[repr(C)]
 pub enum HostState {
-    HsNewGame = 0,
-    HsLoadGame,
-    HsChangeLevelSp,
-    HsChangeLevelMp,
-    HsRun,
-    HsGameShutdown,
-    HsShutdown,
-    HsRestart,
+    NewGame = 0,
+    LoadGame,
+    ChangeLevelSp,
+    ChangeLevelMp,
+    Run,
+    GameShutdown,
+    Shutdown,
+    Restart,
 }
 
 #[repr(C)]

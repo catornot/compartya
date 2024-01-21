@@ -89,15 +89,15 @@ impl TryInto<Vec<u8>> for SentPacket {
     }
 }
 
-impl Into<SentPacket> for PacketMessage {
-    fn into(self) -> SentPacket {
-        SentPacket::PacketMessage(self)
+impl From<PacketMessage> for SentPacket {
+    fn from(val: PacketMessage) -> Self {
+        SentPacket::PacketMessage(val)
     }
 }
 
-impl Into<SentPacket> for PacketResponse {
-    fn into(self) -> SentPacket {
-        SentPacket::PacketResponse(self)
+impl From<PacketResponse> for SentPacket {
+    fn from(val: PacketResponse) -> Self {
+        SentPacket::PacketResponse(val)
     }
 }
 

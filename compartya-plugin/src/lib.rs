@@ -1,7 +1,15 @@
 use bindings::{EngineFunctions, HostState, ENGINE_FUNCTIONS};
 use compartya_shared::{LobbyUid, Order, Password, PlayerUid};
+use invite_handler::compartya_join_handler;
 use parking_lot::Mutex;
-use rrplug::{async_call_sq_function, prelude::*};
+use rrplug::{
+    call_sq_function,
+    exports::OnceCell,
+    high::UnsafeHandle,
+    interfaces::external::SourceInterface,
+    mid::{squirrel::SQVM_UI, utils::set_c_char_array},
+    prelude::*,
+};
 use std::{
     env,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -9,8 +17,11 @@ use std::{
     sync::mpsc::{self, Receiver, Sender},
 };
 
+use crate::invite_handler::InviteHandler;
+
 mod bindings;
 mod commands;
+mod invite_handler;
 mod networking;
 mod orders;
 
@@ -51,17 +62,25 @@ pub struct User {
 pub struct ComPartyaPlugin {
     recv_runframe: Mutex<Receiver<LocalMessage>>,
     send_runframe: Mutex<Sender<LocalMessage>>,
+    invite_handler: OnceCell<UnsafeHandle<&'static InviteHandler>>,
 }
 
 impl Plugin for ComPartyaPlugin {
-    fn new(plugin_data: &PluginData) -> Self {
-        orders::register_functions(plugin_data);
+    const PLUGIN_INFO: PluginInfo = PluginInfo::new(
+        "compartya\0",
+        "COMPARTY0\0",
+        "COMPARTYA\0",
+        PluginContext::CLIENT,
+    );
+
+    fn new(_reloaded: bool) -> Self {
+        orders::register_functions();
 
         let (send_runframe, recv) = mpsc::channel();
         let (send, recv_runframe) = mpsc::channel();
 
-        const IP_STRING: &'static str = "compartya_ip";
-        const PORT_STRING: &'static str = "compartya_port";
+        const IP_STRING: &str = "compartya_ip";
+        const PORT_STRING: &str = "compartya_port";
 
         let args = env::args()
             .zip(env::args().skip(1))
@@ -84,17 +103,22 @@ impl Plugin for ComPartyaPlugin {
                 .unwrap_or(DEFAULT_PORT.to_string());
 
         std::thread::spawn(move || {
-            _ = networking::run_connections(recv, send, addr)
-                .map_err(|err| _ = log::error!("{err}"))
+            _ = networking::run_connections(recv, send, addr).map_err(|err| log::error!("{err}"))
         });
 
         Self {
             recv_runframe: Mutex::new(recv_runframe),
             send_runframe: Mutex::new(send_runframe),
+            invite_handler: OnceCell::new(),
         }
     }
 
-    fn on_dll_load(&self, engine_data: Option<&EngineData>, dll_ptr: &DLLPointer) {
+    fn on_dll_load(
+        &self,
+        engine_data: Option<&EngineData>,
+        dll_ptr: &DLLPointer,
+        _engine_token: EngineToken,
+    ) {
         unsafe { EngineFunctions::try_init(dll_ptr, &ENGINE_FUNCTIONS) };
 
         if let WhichDll::Client = dll_ptr.which_dll() {
@@ -105,10 +129,21 @@ impl Plugin for ComPartyaPlugin {
             return;
         };
 
+        match unsafe { InviteHandler::from_dll_name("DiscordRPC.dll", "InviteHandler001") } {
+            Some(interface) => {
+                unsafe { interface.set_join_handler(compartya_join_handler) };
+
+                _ = self
+                    .invite_handler
+                    .set(unsafe { UnsafeHandle::new(interface) })
+            }
+            None => log::warn!("invite handler doesn't exist"),
+        }
+
         commands::create_commands(engine_data)
     }
 
-    fn runframe(&self) {
+    fn runframe(&self, engine_token: EngineToken) {
         let Ok(recved) = self.recv_runframe.lock().try_recv() else {
             return;
         };
@@ -116,7 +151,14 @@ impl Plugin for ComPartyaPlugin {
         match recved {
             LocalMessage::ExecuteOrder(order) => match order {
                 Order::JoinServer(id, password) => {
-                    async_call_sq_function!(ScriptVmType::Ui, "CompartyaJoinServer", id, password)
+                    _ = call_sq_function!(
+                        SQVM_UI.get(engine_token).borrow().expect("should be init"),
+                        SQFUNCTIONS.client.wait(),
+                        "CompartyaJoinServer",
+                        id,
+                        password
+                    )
+                    .map_err(|err| err.log());
                 }
                 Order::LeaveServer => unsafe {
                     let host_state = ENGINE_FUNCTIONS
@@ -138,7 +180,7 @@ impl Plugin for ComPartyaPlugin {
                         return;
                     }
 
-                    host_state.next_state = HostState::HsNewGame;
+                    host_state.next_state = HostState::NewGame;
                     set_c_char_array(&mut host_state.level_name, "mp_lobby");
                 },
             },
@@ -147,9 +189,15 @@ impl Plugin for ComPartyaPlugin {
         }
     }
 
-    fn on_sqvm_created(&self, sqvm_handle: &CSquirrelVMHandle) {
+    fn on_sqvm_created(&self, sqvm_handle: &CSquirrelVMHandle, _engine_token: EngineToken) {
         orders::init_order_capture(sqvm_handle)
     }
+
+    fn on_sqvm_destroyed(&self, _sqvm_handle: &CSquirrelVMHandle, _engine_token: EngineToken) {}
+
+    fn on_module_load() {}
+
+    fn plugins_loaded(&self) {}
 }
 
 fn get_local_ip() -> String {
@@ -168,11 +216,4 @@ fn get_local_ip() -> String {
         .to_string()
 }
 
-#[inline]
-pub(crate) unsafe fn set_c_char_array<const U: usize>(buf: &mut [std::ffi::c_char; U], new: &str) {
-    *buf = [0; U]; // null everything
-    buf.iter_mut()
-        .zip(new.as_bytes())
-        .for_each(|(buf_char, new)| *buf_char = *new as i8);
-}
 entry!(ComPartyaPlugin);

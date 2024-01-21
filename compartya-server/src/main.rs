@@ -13,6 +13,7 @@ pub struct Server {
     lobby_connections: Vec<(LobbyUid, SocketAddr)>,
 }
 
+#[allow(clippy::result_unit_err)]
 pub fn main() -> Result<(), ()> {
     simple_logger::SimpleLogger::new().env().init().unwrap();
 
@@ -31,7 +32,7 @@ pub fn main() -> Result<(), ()> {
             ..Default::default()
         },
     )
-    .map_err(|err| _ = log::error!("failed to setup socket {err}"))?;
+    .map_err(|err| log::error!("failed to setup socket {err}"))?;
     let (send_socket, recv_socket) = (socket.get_packet_sender(), socket.get_event_receiver());
     std::thread::spawn(move || socket.start_polling());
 
@@ -91,12 +92,11 @@ fn process_message(
         (PacketMessage::FindLobby(lobby_id), None) => {
             log::info!("requesting lobby {} ", lobby_id.iter().collect::<String>());
 
-            let Some(lobby) = server.lobby_connections.iter().find(|(id, _)| {
-                !id.iter()
-                    .cloned()
-                    .zip(lobby_id.clone().into_iter())
-                    .any(|(c1, c2)| c1 != c2)
-            }) else {
+            let Some(lobby) = server
+                .lobby_connections
+                .iter()
+                .find(|(id, _)| !id.iter().cloned().zip(lobby_id).any(|(c1, c2)| c1 != c2))
+            else {
                 log::error!(
                     "didn't find lobby {} for {addr}",
                     lobby_id.iter().collect::<String>()
@@ -173,9 +173,7 @@ fn process_response(
 }
 
 fn remove_from_server(server: &mut Server, addr: &SocketAddr) {
-    server
-        .lobby_connections
-        .iter()
-        .position(|(_, a)| a == addr)
-        .map(|i| _ = server.lobby_connections.swap_remove(i));
+    if let Some(i) = server.lobby_connections.iter().position(|(_, a)| a == addr) {
+        _ = server.lobby_connections.swap_remove(i)
+    }
 }

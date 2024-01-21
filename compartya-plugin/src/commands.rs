@@ -11,8 +11,12 @@ static ORIGINAL_DISCONNECT: OnceLock<
 
 pub fn hook_disconnect() {
     let disconnect_command = match find_concommand("disconnect") {
-        Some(c) => c,
-        None => return log::error!("couldn't find disconnect command => proxi chat will not work"),
+        Ok(c) => c,
+        Err(err) => {
+            return log::error!(
+                "couldn't find disconnect command => some features will not work : {err}"
+            )
+        }
     };
 
     if let Some(org_func) = disconnect_command
@@ -71,7 +75,7 @@ fn host_lobby(cmd: CCommandResult) -> Option<()> {
         .send(LocalMessage::BecomeHost(
             password
                 .try_into()
-                .map_err(|_| _ = log::info!("the password must be 8 chars in lenght"))
+                .map_err(|_| log::info!("the password must be 8 chars in lenght"))
                 .ok()?,
         ))
     {
@@ -127,11 +131,11 @@ fn connect_to_lobby(cmd: CCommandResult) -> Option<()> {
             .chars()
             .collect::<Vec<char>>()
             .try_into()
-            .map_err(|_| _ = log::info!("the lobby id must be 8 chars in lenght"))
+            .map_err(|_| log::info!("the lobby id must be 8 chars in lenght"))
             .ok()?,
         password
             .try_into()
-            .map_err(|_| _ = log::info!("the password must be 8 chars in lenght"))
+            .map_err(|_| log::info!("the password must be 8 chars in lenght"))
             .ok()?,
     )) {
         log::info!("failed to send connection message {err}")

@@ -64,6 +64,10 @@ pub fn run_connections(
                 (LocalMessage::BecomeUser, ConnectionState::Host(_)) => {
                     log::info!("became user");
                     state = ConnectionState::User(User::default());
+
+                    if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
+                        unsafe { invite_hanlder.copy().clear_secret() };
+                    }
                 }
                 (LocalMessage::Leave, _) => {
                     log::info!("left current state");
@@ -87,9 +91,7 @@ pub fn run_connections(
                         .filter_map(|(maybe_err, addr)| {
                             Some((
                                 maybe_err
-                                    .map_err(|err| {
-                                        _ = log::warn!("failed to build order packet {err}")
-                                    })
+                                    .map_err(|err| log::warn!("failed to build order packet {err}"))
                                     .ok()?,
                                 addr,
                             ))
@@ -198,7 +200,11 @@ pub fn run_connections(
 
                 if addr == MATCHMAKING_SERVER_ADDR {
                     log::warn!("disconnected from stun server");
-                    host.lobby_id = None
+                    host.lobby_id = None;
+
+                    if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
+                        unsafe { invite_hanlder.copy().clear_secret() };
+                    }
                 }
             }
         }
@@ -279,7 +285,7 @@ fn process_message_user(
     addr: SocketAddr,
     msg: PacketMessage,
     send_socket: &crossbeam_channel::Sender<Packet>,
-    state: &mut User,
+    state: &User,
     send_tf2: &Sender<LocalMessage>,
 ) -> Result<(), PartyaError> {
     match msg {
@@ -341,13 +347,15 @@ fn process_response(
         }
         (PacketResponse::CreatedLobby(lobby_id), ConnectionState::Host(host)) => {
             host.lobby_id = Some(lobby_id);
+            let lobby_id = lobby_id.into_iter().collect::<String>();
 
-            log::info!(
-                "created a lobby {}",
-                lobby_id.into_iter().collect::<String>()
-            );
+            log::info!("created a lobby {}", lobby_id);
 
             _ = send_ping.send((addr, None));
+
+            if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
+                unsafe { invite_hanlder.copy().set_secret(lobby_id) };
+            }
         }
         (PacketResponse::Pong, ConnectionState::Host(host)) => {
             if let Some((_, uid)) = host.clients.iter().find(|(a, _)| a == &addr) {
@@ -373,10 +381,9 @@ fn process_response(
 }
 
 fn remove_from_host(host: &mut Host, addr: &SocketAddr) {
-    host.clients
-        .iter()
-        .position(|(a, _)| a == addr)
-        .map(|i| _ = host.clients.swap_remove(i));
+    if let Some(i) = host.clients.iter().position(|(a, _)| a == addr) {
+        _ = host.clients.swap_remove(i)
+    }
 }
 
 pub fn run_ping_thread(

@@ -1,4 +1,5 @@
 use rrplug::{
+    bindings::squirrelclasstypes::ScriptContext,
     high::{
         squirrel::compile_string,
         squirrel_traits::{GetFromSQObject, GetFromSquirrelVm, PushToSquirrelVm, SQVMName},
@@ -29,14 +30,14 @@ struct ServerInfo {
     required_mods: Vec<RequiredModInfo>,
 }
 
-pub fn register_functions(plugin_data: &PluginData) {
-    plugin_data.register_sq_functions(connected_to_server);
-    plugin_data.register_sq_functions(sq_log_error);
-    plugin_data.register_sq_functions(sq_log_info);
+pub fn register_functions() {
+    register_sq_functions(connected_to_server);
+    register_sq_functions(sq_log_error);
+    register_sq_functions(sq_log_info);
 }
 
 pub fn init_order_capture(handle: &CSquirrelVMHandle) {
-    if let ScriptVmType::Client = handle.get_context() {
+    if let ScriptContext::CLIENT = handle.get_context() {
         unsafe {
             let host_state = ENGINE_FUNCTIONS
                 .wait()
@@ -62,7 +63,7 @@ pub fn init_order_capture(handle: &CSquirrelVMHandle) {
         }
     }
 
-    let ScriptVmType::Ui = handle.get_context() else {
+    let ScriptContext::UI = handle.get_context() else {
         return;
     };
 
@@ -102,18 +103,14 @@ fn connected_to_server(server_info: ServerInfo) {
             server_info.id,
             "".into(), // server_info.requires_password.then()
         )));
-
-    Ok(())
 }
 
 #[rrplug::sqfunction(VM = "UI", ExportName = "CompartyaLogInfo")]
 fn sq_log_info(log_msg: String) {
     log::info!("{log_msg}");
-    Ok(())
 }
 
 #[rrplug::sqfunction(VM = "UI", ExportName = "CompartyaLogError")]
 fn sq_log_error(log_msg: String) {
     log::error!("{log_msg}");
-    Ok(())
 }
