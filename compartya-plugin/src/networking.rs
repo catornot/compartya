@@ -354,7 +354,9 @@ fn process_response(
             _ = send_ping.send((addr, None));
 
             if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
-                unsafe { invite_hanlder.copy().set_secret(lobby_id) };
+                if let Ok(lobby_id_cstring) = rrplug::mid::utils::try_cstring(&lobby_id) {
+                    _ = unsafe { invite_hanlder.copy().set_secret(lobby_id_cstring.as_ptr()) };
+                }
             }
         }
         (PacketResponse::Pong, ConnectionState::Host(host)) => {
