@@ -1,5 +1,5 @@
 use rrplug::{
-    bindings::cvar::convar::FCVAR_CLIENTDLL, mid::concommands::find_concommand, prelude::*,
+    bindings::cvar::convar::FCVAR_CLIENTDLL, mid::engine::concommands::find_concommand, prelude::*,
 };
 use std::sync::OnceLock;
 
@@ -29,13 +29,14 @@ pub fn hook_disconnect() {
     }
 }
 
-pub fn create_commands(engine_data: &EngineData) {
+pub fn create_commands(engine_data: &EngineData, token: EngineToken) {
     engine_data
         .register_concommand(
             "p_host_lobby",
             host_lobby,
             "command to start hosting a lobby: p_host_lobby <password;optional>",
             FCVAR_CLIENTDLL as i32,
+            token,
         )
         .expect("failed to create host_lobby command");
 
@@ -45,6 +46,7 @@ pub fn create_commands(engine_data: &EngineData) {
             connect_to_lobby,
             "command to connect to a lobby: p_connect_to_lobby <lobby_id> <password;optional>",
             FCVAR_CLIENTDLL as i32,
+            token,
         )
         .expect("failed to create connect_to_lobby command");
 
@@ -54,6 +56,17 @@ pub fn create_commands(engine_data: &EngineData) {
             leave,
             "command to leave/close a lobby: p_leave",
             FCVAR_CLIENTDLL as i32,
+            token,
+        )
+        .expect("failed to create leave command");
+
+    engine_data
+        .register_concommand(
+            "p_test_connect",
+            test_connect,
+            "",
+            FCVAR_CLIENTDLL as i32,
+            token,
         )
         .expect("failed to create leave command");
 }
@@ -150,6 +163,16 @@ fn leave() -> Option<()> {
         log::info!("failed to leave {err}")
     }
 
+    None
+}
+
+#[rrplug::concommand]
+fn test_connect() -> Option<()> {
+    _ = PLUGIN
+        .wait()
+        .send_runframe
+        .lock()
+        .send(LocalMessage::GetCachedOrder);
     None
 }
 

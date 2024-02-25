@@ -1,4 +1,4 @@
-use compartya_shared::{PacketMessage, PacketResponse, PartyaError, PlayerUid, SentPacket};
+use compartya_shared::{Order, PacketMessage, PacketResponse, PartyaError, PlayerUid, SentPacket};
 use laminar::{ErrorKind, Packet, Socket, SocketEvent};
 use rrplug::prelude::*;
 use std::{
@@ -12,9 +12,28 @@ pub fn run_connections(
     recv_tf2: Receiver<LocalMessage>,
     send_tf2: Sender<LocalMessage>,
     addr: String,
+    order_overwrite: Option<Order>,
 ) -> Result<(), ErrorKind> {
-    let mut state = ConnectionState::User(User::default());
+    if order_overwrite.is_some() {
+        _ = send_tf2.send(LocalMessage::ExecuteOrder(
+            order_overwrite.clone().unwrap_or_default(),
+        ));
+    }
+
+    let mut state = ConnectionState::User(User {
+        cached_order: order_overwrite.unwrap_or_else(|| {
+            Order::JoinServer(
+                "f4bffec013fe65b634ba2ea499a86fa3".to_string(),
+                "".to_string(),
+            )
+        }),
+        ..Default::default()
+    });
     // let last_ping = Instant::now();
+
+    let stun_addr = MATCHMAKING_SERVER_ADDR
+        .parse::<SocketAddr>()
+        .expect("given stun server address is invalid");
 
     let mut socket = Socket::bind(addr.clone())?;
     let (send_socket, recv_socket) = (socket.get_packet_sender(), socket.get_event_receiver());
@@ -39,7 +58,7 @@ pub fn run_connections(
                     user.password = password;
 
                     _ = send_socket.send(Packet::reliable_unordered(
-                        MATCHMAKING_SERVER_ADDR,
+                        stun_addr,
                         PacketMessage::FindLobby(lobby_id)
                             .send()
                             .try_into()
@@ -54,7 +73,7 @@ pub fn run_connections(
                     });
 
                     _ = send_socket.send(Packet::reliable_unordered(
-                        MATCHMAKING_SERVER_ADDR,
+                        stun_addr,
                         PacketMessage::CreateLobby
                             .send()
                             .try_into()
@@ -103,8 +122,13 @@ pub fn run_connections(
                 (LocalMessage::ExecuteFunction(func), _) => {
                     _ = send_tf2.send(LocalMessage::ExecuteFunction(func));
                 }
+                (LocalMessage::GetCachedOrder, ConnectionState::User(user)) => {
+                    log::info!("getting cached order");
+                    _ = send_tf2.send(LocalMessage::ExecuteOrder(user.cached_order.clone()));
+                }
                 (
                     LocalMessage::BecomeUser
+                    | LocalMessage::GetCachedOrder
                     | LocalMessage::BecomeHost(_)
                     | LocalMessage::ConnectToLobby(_, _)
                     | LocalMessage::ExecuteOrder(_)
@@ -165,9 +189,14 @@ pub fn run_connections(
                             process_message_user(addr, msg, &send_socket, user, &send_tf2)
                         }
                     },
-                    SentPacket::PacketResponse(response) => {
-                        process_response(addr, response, &send_socket, &mut state, &send_ping)
-                    }
+                    SentPacket::PacketResponse(response) => process_response(
+                        addr,
+                        response,
+                        &send_socket,
+                        &mut state,
+                        &send_ping,
+                        stun_addr,
+                    ),
                 };
 
                 if let Err(err) = maybe_err {
@@ -198,7 +227,7 @@ pub fn run_connections(
 
                 remove_from_host(host, &addr);
 
-                if addr == MATCHMAKING_SERVER_ADDR {
+                if addr == stun_addr {
                     log::warn!("disconnected from stun server");
                     host.lobby_id = None;
 
@@ -285,13 +314,16 @@ fn process_message_user(
     addr: SocketAddr,
     msg: PacketMessage,
     send_socket: &crossbeam_channel::Sender<Packet>,
-    state: &User,
+    state: &mut User,
     send_tf2: &Sender<LocalMessage>,
 ) -> Result<(), PartyaError> {
     match msg {
-        PacketMessage::NewOrder(uid, order) if uid == state.uid => send_tf2
-            .send(LocalMessage::ExecuteOrder(order))
-            .expect("somehow a channel broke"),
+        PacketMessage::NewOrder(uid, order) if uid == state.uid => {
+            send_tf2
+                .send(LocalMessage::ExecuteOrder(order.clone()))
+                .expect("somehow a channel broke");
+            state.cached_order = order;
+        }
         PacketMessage::Ping(Some(uid)) if uid == state.uid => {
             _ = send_socket.send(Packet::reliable_unordered(
                 addr,
@@ -311,6 +343,7 @@ fn process_response(
     send_socket: &crossbeam_channel::Sender<Packet>,
     state: &mut ConnectionState,
     send_ping: &Sender<(SocketAddr, Option<PlayerUid>)>,
+    stun_server_addr: SocketAddr,
 ) -> Result<(), PartyaError> {
     match (response, state) {
         (PacketResponse::AuthAccepted(uid, password), ConnectionState::User(user))
@@ -362,7 +395,7 @@ fn process_response(
         (PacketResponse::Pong, ConnectionState::Host(host)) => {
             if let Some((_, uid)) = host.clients.iter().find(|(a, _)| a == &addr) {
                 _ = send_ping.send((addr, Some(*uid)));
-            } else if addr == MATCHMAKING_SERVER_ADDR {
+            } else if addr == stun_server_addr {
                 _ = send_ping.send((addr, None));
             }
         } // pong comfirmed

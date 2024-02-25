@@ -12,6 +12,7 @@ laminar = "0.5.0"
 nanoid = "0.4.0"
 parking_lot = "0.12.1"
 crossbeam-channel = "0.5"
+windows = { version = "0.53.0", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security"] }
 
 [lib]
 crate-type = ["cdylib"]

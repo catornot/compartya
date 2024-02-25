@@ -1,3 +1,4 @@
+#if COMPARTYA
 global function CompartyaJoinServer
 global function CompartyaFindServerByName
 
@@ -13,7 +14,17 @@ void function CompartyaFindServerByName( string serverName )
 
 void function JoinServerThreaded( string serverId, string password )
 {
-  wait 5 // maybe also wait for the lobby to load?
+	NSTryAuthWithLocalServer()
+	CompartyaLogInfo( "auth check started" ) 
+
+	while ( NSIsAuthenticatingWithServer() )
+	{
+		wait 0
+	}
+
+	CompartyaLogInfo( "auth check ended" ) 
+	
+	wait 5
   
 	NSRequestServerList()
 
@@ -206,3 +217,4 @@ void function LoadRequiredMods(array<RequiredModInfo> requiredMods)
 	if ( modsChanged )
 		ReloadMods()
 }
+#endif // COMPARTYA 
