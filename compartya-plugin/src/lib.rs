@@ -127,6 +127,15 @@ impl Plugin for ComPartyaPlugin {
                 .then(|| arg.split_once("open:").map(|server_id| server_id.1))
                 .flatten()
                 .map(|server_id| Order::JoinServer(server_id.to_string(), String::new()))
+                .or_else(|| {
+                    arg.starts_with("compartya://open:")
+                        .then(|| {
+                            arg.split_once("open:")
+                                .map(|server_id| &server_id.1[0..server_id.1.len() - 1])
+                        })
+                        .flatten()
+                        .map(|server_id| Order::JoinServer(server_id.to_string(), String::new()))
+                })
         });
 
         std::thread::spawn(move || {
