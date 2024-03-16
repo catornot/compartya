@@ -43,7 +43,7 @@ pub enum CmdSource {
 
 #[derive(Debug, Clone)]
 #[repr(C)]
-pub enum EcommandTarget {
+pub enum ECommandTarget {
     FirstPlayer = 0,
     LastPlayer = 1,
     Server = 2,
@@ -87,9 +87,9 @@ pub struct CHostState {
 offset_functions! {
     ENGINE_FUNCTIONS + EngineFunctions for WhichDll::Engine => {
         // ccommand_tokenize = unsafe extern "C" fn(&mut Option<CCommand>, *const c_char, CmdSource) -> bool, at 0x418380;
-        cbuf_add_text_type = unsafe extern "C" fn(EcommandTarget, *const c_char, CmdSource) where offset(0x1203B0);
+        cbuf_add_text_type = unsafe extern "C" fn(ECommandTarget, *const c_char, CmdSource) where offset(0x1203B0);
         cbuf_execute = unsafe extern "C" fn() where offset(0x1204B0);
-        cbuf_get_current_player = unsafe extern "C" fn() -> EcommandTarget where offset(0x120630);
+        cbuf_get_current_player = unsafe extern "C" fn() -> ECommandTarget where offset(0x120630);
         // client_array = *const CBaseClient, at 0x12A53F90;
         host_state = *mut CHostState where offset(0x7CF180);
     }

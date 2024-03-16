@@ -62,6 +62,16 @@ pub fn create_commands(engine_data: &EngineData, token: EngineToken) {
 
     engine_data
         .register_concommand(
+            "p_order_to_this_server",
+            order_to_this_server,
+            "command to make the party connect to this game",
+            FCVAR_CLIENTDLL as i32,
+            token,
+        )
+        .expect("failed to create leave command");
+
+    engine_data
+        .register_concommand(
             "p_test_connect",
             test_connect,
             "",
@@ -81,17 +91,12 @@ fn host_lobby(cmd: CCommandResult) -> Option<()> {
         .collect::<Vec<char>>();
     password.resize(8, ' ');
 
-    if let Err(err) = PLUGIN
-        .wait()
-        .send_runframe
-        .lock()
-        .send(LocalMessage::BecomeHost(
-            password
-                .try_into()
-                .map_err(|_| log::info!("the password must be 8 chars in lenght"))
-                .ok()?,
-        ))
-    {
+    if let Err(err) = PLUGIN.wait().send_runframe.send(LocalMessage::BecomeHost(
+        password
+            .try_into()
+            .map_err(|_| log::info!("the password must be 8 chars in lenght"))
+            .ok()?,
+    )) {
         log::info!("failed to create a new lobby {err}")
     }
 
@@ -133,7 +138,7 @@ fn connect_to_lobby(cmd: CCommandResult) -> Option<()> {
         .collect::<Vec<char>>();
     password.resize(8, ' ');
 
-    let send_runframe = PLUGIN.wait().send_runframe.lock();
+    let send_runframe = &PLUGIN.wait().send_runframe;
 
     if let Err(err) = send_runframe.send(LocalMessage::Leave) {
         log::info!("failed to send downgrade {err}")
@@ -158,8 +163,21 @@ fn connect_to_lobby(cmd: CCommandResult) -> Option<()> {
 }
 
 #[rrplug::concommand]
+fn order_to_this_server() {
+    _ = PLUGIN.wait().send_runframe.send(LocalMessage::NewOrder(
+        compartya_shared::Order::JoinServer(
+            ConVarStruct::find_convar_by_name("ns_server_name", engine_token)
+                .ok()
+                .map(|cvar| cvar.get_value_string())
+                .unwrap_or_default(),
+            "".into(),
+        ),
+    ));
+}
+
+#[rrplug::concommand]
 fn leave() -> Option<()> {
-    if let Err(err) = PLUGIN.wait().send_runframe.lock().send(LocalMessage::Leave) {
+    if let Err(err) = PLUGIN.wait().send_runframe.send(LocalMessage::Leave) {
         log::info!("failed to leave {err}")
     }
 
@@ -171,7 +189,6 @@ fn test_connect() -> Option<()> {
     _ = PLUGIN
         .wait()
         .send_runframe
-        .lock()
         .send(LocalMessage::GetCachedOrder);
     None
 }
@@ -180,7 +197,6 @@ unsafe extern "C" fn disconnect_hook(ccommand: *const rrplug::bindings::cvar::co
     _ = crate::PLUGIN
         .wait()
         .send_runframe
-        .lock()
         .send(LocalMessage::NewOrder(compartya_shared::Order::LeaveServer));
 
     ORIGINAL_DISCONNECT.get().unwrap()(ccommand);

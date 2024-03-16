@@ -36,7 +36,7 @@ pub fn register_functions() {
     register_sq_functions(sq_log_info);
 }
 
-pub fn init_order_capture(handle: &CSquirrelVMHandle) {
+pub fn init_order_capture(handle: &CSquirrelVMHandle, _engine_token: EngineToken) {
     if let ScriptContext::CLIENT = handle.get_context() {
         unsafe {
             let host_state = ENGINE_FUNCTIONS
@@ -57,7 +57,6 @@ pub fn init_order_capture(handle: &CSquirrelVMHandle) {
                 _ = crate::PLUGIN
                     .wait()
                     .send_runframe
-                    .lock()
                     .send(LocalMessage::NewOrder(compartya_shared::Order::LeaveServer));
             }
         }
@@ -72,8 +71,7 @@ pub fn init_order_capture(handle: &CSquirrelVMHandle) {
     _ = crate::PLUGIN
         .wait()
         .send_runframe
-        .lock()
-        .send(LocalMessage::ExecuteFunction(Box::new(move || {
+        .send(LocalMessage::ForwardToEngine(Box::new(LocalMessage::ExecuteFunction(Box::new(move || {
             let sqfunctions = SQFUNCTIONS.client.wait();
 
             _ = compile_string(
@@ -83,7 +81,7 @@ pub fn init_order_capture(handle: &CSquirrelVMHandle) {
                 "AddConnectToServerCallback(void function(ServerInfo info) { CompartyaConnectToServerCallback(info) })",
             )
             .map_err(|err| err.log());
-        })));
+        })))));
 }
 
 #[rrplug::sqfunction(VM = "UI", ExportName = "CompartyaConnectToServerCallback")]
@@ -98,7 +96,6 @@ fn connected_to_server(server_info: ServerInfo) {
     _ = crate::PLUGIN
         .wait()
         .send_runframe
-        .lock()
         .send(LocalMessage::NewOrder(compartya_shared::Order::JoinServer(
             server_info.id,
             "".into(), // server_info.requires_password.then()

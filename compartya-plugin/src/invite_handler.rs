@@ -1,14 +1,7 @@
-use rrplug::{
-    create_external_interface,
-    mid::utils::{from_char_ptr, to_cstring},
-};
+use rrplug::{create_external_interface, mid::utils::from_char_ptr};
 use std::ffi::c_char;
 
-use crate::{
-    bindings::{CmdSource, EcommandTarget, ENGINE_FUNCTIONS},
-    exports::PLUGIN,
-    LocalMessage,
-};
+use crate::{exports::PLUGIN, LocalMessage};
 
 type JoinHandler = extern "C" fn(*const c_char);
 
@@ -29,18 +22,13 @@ create_external_interface! {
 }
 
 pub extern "C" fn compartya_join_handler(lobby_id: *const c_char) {
+    rrplug::prelude::log::info!("invite dispacted");
+
     let lobby_id: String = unsafe { from_char_ptr(lobby_id) };
     _ = PLUGIN
         .wait()
         .send_runframe
-        .lock()
-        .send(LocalMessage::ExecuteFunction(Box::new(move || unsafe {
-            let cmd = to_cstring(&format!("p_connect_to_lobby {}", lobby_id));
-
-            (ENGINE_FUNCTIONS.wait().cbuf_add_text_type)(
-                EcommandTarget::FirstPlayer,
-                cmd.as_ptr(),
-                CmdSource::Code,
-            )
-        })));
+        .send(LocalMessage::ForwardToEngine(Box::new(
+            LocalMessage::ExecuteConCommand(format!("p_connect_to_lobby {}", lobby_id)),
+        )));
 }

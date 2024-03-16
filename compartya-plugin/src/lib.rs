@@ -1,16 +1,19 @@
-use bindings::{EngineFunctions, HostState, ENGINE_FUNCTIONS};
+use bindings::{CmdSource, ECommandTarget, EngineFunctions, HostState, ENGINE_FUNCTIONS};
 use compartya_shared::{LobbyUid, Order, Password, PlayerUid};
 use invite_handler::compartya_join_handler;
-use parking_lot::Mutex;
 use rrplug::{
     call_sq_function,
     exports::OnceCell,
     high::UnsafeHandle,
     interfaces::external::SourceInterface,
-    mid::{squirrel::SQVM_UI, utils::set_c_char_array},
+    mid::{
+        squirrel::SQVM_UI,
+        utils::{set_c_char_array, to_cstring},
+    },
     prelude::*,
 };
 use std::{
+    cell::RefCell,
     env,
     net::SocketAddr,
     process::Command,
@@ -21,6 +24,7 @@ use crate::invite_handler::InviteHandler;
 
 mod bindings;
 mod commands;
+mod gui;
 mod invite_handler;
 mod networking;
 mod orders;
@@ -34,12 +38,19 @@ pub const MATCHMAKING_SERVER_ADDR: &str = env!(
 pub enum LocalMessage {
     ExecuteOrder(Order),
     ExecuteFunction(Box<dyn FnOnce() + Send>),
+    ExecuteConCommand(String),
     ConnectToLobby(LobbyUid, Password),
     BecomeHost(Password),
     BecomeUser,
     Leave,
     NewOrder(Order),
     GetCachedOrder,
+    ForwardToGui(Box<LocalMessage>),
+    ForwardToEngine(Box<LocalMessage>),
+    LobbyUid(Option<String>),
+    IsHost(bool),
+    NewConnection(String),
+    DroppedConnection(String),
 }
 
 #[derive(Debug)]
@@ -62,11 +73,14 @@ pub struct User {
     pub uid: PlayerUid,
     pub password: Password,
     pub cached_order: Order,
+    pub connect_to: Option<SocketAddr>,
 }
 
 pub struct ComPartyaPlugin {
-    recv_runframe: Mutex<Receiver<LocalMessage>>,
-    send_runframe: Mutex<Sender<LocalMessage>>,
+    recv_runframe: EngineGlobal<RefCell<Receiver<LocalMessage>>>,
+    send_runframe: Sender<LocalMessage>,
+    send_gui: Sender<LocalMessage>,
+    recv_gui: EngineGlobal<RefCell<Option<Receiver<LocalMessage>>>>,
     invite_handler: OnceCell<UnsafeHandle<&'static InviteHandler>>,
 }
 
@@ -98,6 +112,7 @@ impl Plugin for ComPartyaPlugin {
 
         let (send_runframe, recv) = mpsc::channel();
         let (send, recv_runframe) = mpsc::channel();
+        let (send_gui, recv_gui) = mpsc::channel();
 
         const IP_STRING: &str = "compartya_ip";
         const PORT_STRING: &str = "compartya_port";
@@ -144,8 +159,10 @@ impl Plugin for ComPartyaPlugin {
         });
 
         Self {
-            recv_runframe: Mutex::new(recv_runframe),
-            send_runframe: Mutex::new(send_runframe),
+            recv_runframe: EngineGlobal::new(RefCell::new(recv_runframe)),
+            send_runframe,
+            send_gui,
+            recv_gui: EngineGlobal::new(RefCell::new(Some(recv_gui))),
             invite_handler: OnceCell::new(),
         }
     }
@@ -159,7 +176,7 @@ impl Plugin for ComPartyaPlugin {
         unsafe { EngineFunctions::try_init(dll_ptr, &ENGINE_FUNCTIONS) };
 
         if let WhichDll::Client = dll_ptr.which_dll() {
-            commands::hook_disconnect()
+            commands::hook_disconnect();
         }
 
         let Some(engine_data) = engine_data else {
@@ -185,7 +202,7 @@ impl Plugin for ComPartyaPlugin {
             return;
         }
 
-        let Ok(recved) = self.recv_runframe.lock().try_recv() else {
+        let Ok(recved) = self.recv_runframe.get(engine_token).borrow_mut().try_recv() else {
             return;
         };
 
@@ -228,15 +245,34 @@ impl Plugin for ComPartyaPlugin {
                 }
             },
             LocalMessage::ExecuteFunction(func) => func(),
+            LocalMessage::ForwardToGui(msg) => _ = self.send_gui.send(*msg),
+            LocalMessage::ExecuteConCommand(cmd) => {
+                let cmd = to_cstring(&cmd);
+
+                unsafe {
+                    (ENGINE_FUNCTIONS.wait().cbuf_add_text_type)(
+                        ECommandTarget::FirstPlayer,
+                        cmd.as_ptr(),
+                        CmdSource::Code,
+                    );
+                }
+            }
             _ => {}
         }
     }
 
-    fn on_sqvm_created(&self, sqvm_handle: &CSquirrelVMHandle, _engine_token: EngineToken) {
-        orders::init_order_capture(sqvm_handle)
-    }
+    fn on_sqvm_created(&self, sqvm_handle: &CSquirrelVMHandle, engine_token: EngineToken) {
+        orders::init_order_capture(sqvm_handle, engine_token);
 
-    fn on_sqvm_destroyed(&self, _sqvm_handle: &CSquirrelVMHandle, _engine_token: EngineToken) {}
+        if sqvm_handle.get_context() == ScriptContext::CLIENT {
+            _ = self
+                .recv_gui
+                .get(engine_token)
+                .borrow_mut()
+                .take()
+                .map(|recv| gui::init_gui(self.send_runframe.clone(), recv));
+        }
+    }
 }
 
 fn get_local_ip() -> String {

@@ -49,13 +49,18 @@ pub fn run_connections(
         if let Ok(lmsg) = recv_tf2.try_recv() {
             match (lmsg, &mut state) {
                 (LocalMessage::ConnectToLobby(lobby_id, password), ConnectionState::User(user)) => {
+                    let lobby = lobby_id.iter().collect::<String>();
                     log::info!(
                         "trying connecting to {} with password {}",
-                        lobby_id.iter().collect::<String>(),
+                        lobby,
                         password.iter().collect::<String>()
                     );
 
                     user.password = password;
+
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                        LocalMessage::LobbyUid(lobby.into()),
+                    )));
 
                     _ = send_socket.send(Packet::reliable_unordered(
                         stun_addr,
@@ -72,6 +77,10 @@ pub fn run_connections(
                         ..Default::default()
                     });
 
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(LocalMessage::IsHost(
+                        true,
+                    ))));
+
                     _ = send_socket.send(Packet::reliable_unordered(
                         stun_addr,
                         PacketMessage::CreateLobby
@@ -84,13 +93,27 @@ pub fn run_connections(
                     log::info!("became user");
                     state = ConnectionState::User(User::default());
 
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(LocalMessage::IsHost(
+                        false,
+                    ))));
+
                     if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
-                        unsafe { invite_hanlder.copy().clear_secret() };
+                        #[allow(unused_unsafe)] // wtf
+                        unsafe {
+                            invite_hanlder.copy().clear_secret()
+                        }
                     }
                 }
                 (LocalMessage::Leave, _) => {
                     log::info!("left current state");
                     state = ConnectionState::User(User::default());
+
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(LocalMessage::IsHost(
+                        false,
+                    ))));
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                        LocalMessage::LobbyUid(None),
+                    )));
                 }
                 (LocalMessage::NewOrder(order), ConnectionState::Host(host)) => {
                     log::info!("sending order : {order:?}");
@@ -119,12 +142,12 @@ pub fn run_connections(
                             _ = send_socket.send(Packet::reliable_unordered(*addr, packet))
                         });
                 }
-                (LocalMessage::ExecuteFunction(func), _) => {
-                    _ = send_tf2.send(LocalMessage::ExecuteFunction(func));
-                }
                 (LocalMessage::GetCachedOrder, ConnectionState::User(user)) => {
                     log::info!("getting cached order");
                     _ = send_tf2.send(LocalMessage::ExecuteOrder(user.cached_order.clone()));
+                }
+                (LocalMessage::ForwardToEngine(msg), _) => {
+                    _ = send_tf2.send(*msg);
                 }
                 (
                     LocalMessage::BecomeUser
@@ -132,7 +155,14 @@ pub fn run_connections(
                     | LocalMessage::BecomeHost(_)
                     | LocalMessage::ConnectToLobby(_, _)
                     | LocalMessage::ExecuteOrder(_)
-                    | LocalMessage::NewOrder(_),
+                    | LocalMessage::NewOrder(_)
+                    | LocalMessage::ExecuteConCommand(_)
+                    | LocalMessage::ForwardToGui(_)
+                    | LocalMessage::ExecuteFunction(_)
+                    | LocalMessage::LobbyUid(_)
+                    | LocalMessage::NewConnection(_)
+                    | LocalMessage::DroppedConnection(_)
+                    | LocalMessage::IsHost(_),
                     _,
                 ) => {}
             }
@@ -183,7 +213,7 @@ pub fn run_connections(
                 let maybe_err = match recv_packet {
                     SentPacket::PacketMessage(msg) => match &mut state {
                         ConnectionState::Host(host) => {
-                            process_message_host(addr, msg, &send_socket, host)
+                            process_message_host(addr, msg, &send_socket, host, &send_tf2)
                         }
                         ConnectionState::User(user) => {
                             process_message_user(addr, msg, &send_socket, user, &send_tf2)
@@ -196,6 +226,7 @@ pub fn run_connections(
                         &mut state,
                         &send_ping,
                         stun_addr,
+                        &send_tf2,
                     ),
                 };
 
@@ -217,7 +248,15 @@ pub fn run_connections(
 
                 if user.server == Some(addr) {
                     log::warn!("disconnected from lobby");
-                    user.server = None
+                    user.server = None;
+
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                        LocalMessage::LobbyUid(None),
+                    )));
+
+                    if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
+                        unsafe { invite_hanlder.copy().clear_secret() };
+                    }
                 }
             }
             (SocketEvent::Disconnect(addr), ConnectionState::Host(host)) => {
@@ -225,11 +264,19 @@ pub fn run_connections(
                     log::info!("{} disconnect", conn.1.into_iter().collect::<String>());
                 }
 
-                remove_from_host(host, &addr);
+                let client_disconnected = remove_from_host(host, &addr).into_iter().collect();
+
+                _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                    LocalMessage::DroppedConnection(client_disconnected),
+                )));
 
                 if addr == stun_addr {
                     log::warn!("disconnected from stun server");
                     host.lobby_id = None;
+
+                    _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                        LocalMessage::LobbyUid(None),
+                    )));
 
                     if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
                         unsafe { invite_hanlder.copy().clear_secret() };
@@ -245,6 +292,7 @@ fn process_message_host(
     msg: PacketMessage,
     send_socket: &crossbeam_channel::Sender<Packet>,
     state: &mut Host,
+    send_tf2: &Sender<LocalMessage>,
 ) -> Result<(), PartyaError> {
     let conn = state.clients.iter().find(|(a, _)| addr == *a);
 
@@ -275,12 +323,17 @@ fn process_message_host(
                     .send()
                     .try_into()?,
             ));
+
+            _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                LocalMessage::NewConnection(id.into_iter().collect()),
+            )));
         }
         (PacketMessage::GetLastOrder(uid), Some(conn)) => {
             if uid != conn.1 {
                 return Err(PartyaError::IllegalUid(conn.1, conn.0));
             }
 
+            log::info!("user requested last order");
             _ = send_socket.send(Packet::reliable_unordered(
                 addr,
                 PacketMessage::NewOrder(uid, state.last_order.clone())
@@ -330,7 +383,16 @@ fn process_message_user(
                 PacketResponse::Pong.send().try_into()?,
             ))
         }
-        PacketMessage::VibeCheck => {} // shouldn't hit this but just in case
+        PacketMessage::VibeCheck if Some(addr) == state.connect_to => {
+            if let Some(lobby_addr) = state.connect_to.take() {
+                _ = send_socket.send(Packet::reliable_unordered(
+                    lobby_addr,
+                    PacketMessage::Auth(state.password).send().try_into()?,
+                ));
+            } else {
+                log::warn!("lobby was not present somehow in correct vibe check");
+            }
+        }
         msg => log::warn!("received a unexpected user message packet {msg:?}"),
     }
 
@@ -344,6 +406,7 @@ fn process_response(
     state: &mut ConnectionState,
     send_ping: &Sender<(SocketAddr, Option<PlayerUid>)>,
     stun_server_addr: SocketAddr,
+    send_tf2: &Sender<LocalMessage>,
 ) -> Result<(), PartyaError> {
     match (response, state) {
         (PacketResponse::AuthAccepted(uid, password), ConnectionState::User(user))
@@ -354,6 +417,7 @@ fn process_response(
             user.server = Some(addr);
             user.uid = uid;
 
+            log::info!("featching last order");
             _ = send_socket.send(Packet::reliable_unordered(
                 addr,
                 PacketMessage::GetLastOrder(user.uid).send().try_into()?,
@@ -365,18 +429,19 @@ fn process_response(
             log::error!("failed to authenticate with lobby {:?}", user.server)
         }
         (PacketResponse::FoundLobby(lobby_addr), ConnectionState::User(user)) => {
-            log::info!("found lobby connecting");
+            log::info!("found lobby waiting for vibecheck");
 
-            _ = send_socket.send(Packet::reliable_unordered(
-                lobby_addr,
-                PacketMessage::Auth(user.password).send().try_into()?,
-            ));
+            user.connect_to = Some(lobby_addr);
         }
         (PacketResponse::NoLobby(lobby_id), ConnectionState::User(_)) => {
             log::info!(
                 "failed to find lobby {}",
                 lobby_id.into_iter().collect::<String>()
             );
+
+            _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                LocalMessage::LobbyUid(None),
+            )));
         }
         (PacketResponse::CreatedLobby(lobby_id), ConnectionState::Host(host)) => {
             host.lobby_id = Some(lobby_id);
@@ -385,6 +450,10 @@ fn process_response(
             log::info!("created a lobby {}", lobby_id);
 
             _ = send_ping.send((addr, None));
+
+            _ = send_tf2.send(LocalMessage::ForwardToGui(Box::new(
+                LocalMessage::LobbyUid(lobby_id.clone().into()),
+            )));
 
             if let Some(invite_hanlder) = crate::PLUGIN.wait().invite_handler.get() {
                 if let Ok(lobby_id_cstring) = rrplug::mid::utils::try_cstring(&lobby_id) {
@@ -415,9 +484,11 @@ fn process_response(
     Ok(())
 }
 
-fn remove_from_host(host: &mut Host, addr: &SocketAddr) {
+fn remove_from_host(host: &mut Host, addr: &SocketAddr) -> [char; 5] {
     if let Some(i) = host.clients.iter().position(|(a, _)| a == addr) {
-        _ = host.clients.swap_remove(i)
+        host.clients.swap_remove(i).1
+    } else {
+        Default::default()
     }
 }
 

@@ -36,7 +36,8 @@ pub fn try_register_uri_handler() -> Result<(), windows::core::Error> {
             None,
             &mut hkey,
             None,
-        )?;
+        )
+        .ok()?;
     }
 
     let path_to_run = env::current_exe().expect("couldn't get norsthar's path!");
@@ -53,7 +54,8 @@ pub fn try_register_uri_handler() -> Result<(), windows::core::Error> {
             REG_SZ.0,
             Some(command.as_ptr().cast()),
             (command.len() * mem::size_of::<u16>()) as u32,
-        )?;
+        )
+        .ok()?;
         RegSetKeyValueW(
             HKEY_CLASSES_ROOT,
             &HSTRING::from("compartya"),
@@ -61,7 +63,8 @@ pub fn try_register_uri_handler() -> Result<(), windows::core::Error> {
             REG_SZ.0,
             Some(flag.as_ptr().cast()),
             (flag.len() * mem::size_of::<u16>()) as u32,
-        )?;
+        )
+        .ok()?;
         RegSetKeyValueW(
             HKEY_CLASSES_ROOT,
             &HSTRING::from("compartya"),
@@ -69,7 +72,8 @@ pub fn try_register_uri_handler() -> Result<(), windows::core::Error> {
             REG_SZ.0,
             Some(name.as_ptr().cast()),
             (name.len() * mem::size_of::<u16>()) as u32,
-        )?;
+        )
+        .ok()?;
     }
     Ok(())
 }
