@@ -58,7 +58,7 @@ impl ImguiRenderLoop for ComPartyaHud {
             }
         }
 
-        ui.window("##partya")
+        ui.window("partya")
             .collapsed(self.should_render, Condition::FirstUseEver) // change later to hook toggle console and a cmd maybe
             .size([320., 320.], Condition::Always)
             .position([0., 0.], Condition::Always)

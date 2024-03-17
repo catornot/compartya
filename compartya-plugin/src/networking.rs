@@ -357,6 +357,13 @@ fn process_message_host(
                 PacketResponse::Pong.send().try_into()?,
             ))
         } // should limit this
+        (PacketMessage::VibeCheck, None) => {
+            // send back a vibe check; how bad can it be?
+            _ = send_socket.send(Packet::reliable_unordered(
+                addr,
+                PacketMessage::VibeCheck.send().try_into()?,
+            ));
+        }
         (msg, _) => log::warn!("received a unexpected host message packet {msg:?}"),
     }
 
@@ -393,6 +400,7 @@ fn process_message_user(
                 log::warn!("lobby was not present somehow in correct vibe check");
             }
         }
+        PacketMessage::VibeCheck if Some(addr) == state.server => {}
         msg => log::warn!("received a unexpected user message packet {msg:?}"),
     }
 
@@ -429,7 +437,12 @@ fn process_response(
             log::error!("failed to authenticate with lobby {:?}", user.server)
         }
         (PacketResponse::FoundLobby(lobby_addr), ConnectionState::User(user)) => {
-            log::info!("found lobby waiting for vibecheck");
+            log::info!("found lobby waiting for vibecheck; if this takes too long conisder complaining to catornot or try again pls");
+
+            _ = send_socket.send(Packet::reliable_unordered(
+                lobby_addr,
+                PacketMessage::VibeCheck.send().try_into()?,
+            ));
 
             user.connect_to = Some(lobby_addr);
         }
