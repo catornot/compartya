@@ -1,5 +1,4 @@
 use rrplug::{
-    bindings::squirrelclasstypes::ScriptContext,
     high::{
         squirrel::compile_string,
         squirrel_traits::{GetFromSQObject, GetFromSquirrelVm, PushToSquirrelVm, SQVMName},

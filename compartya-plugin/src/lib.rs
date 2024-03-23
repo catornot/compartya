@@ -5,7 +5,6 @@ use rrplug::{
     call_sq_function,
     exports::OnceCell,
     high::UnsafeHandle,
-    interfaces::external::SourceInterface,
     mid::{
         squirrel::SQVM_UI,
         utils::{set_c_char_array, to_cstring},
@@ -86,9 +85,9 @@ pub struct ComPartyaPlugin {
 
 impl Plugin for ComPartyaPlugin {
     const PLUGIN_INFO: PluginInfo = PluginInfo::new(
-        "compartya\0",
-        "COMPARTY0\0",
-        "COMPARTYA\0",
+        c"compartya",
+        c"COMPARTYA",
+        c"COMPARTYA",
         PluginContext::CLIENT,
     );
 
@@ -281,7 +280,6 @@ fn get_local_ip() -> String {
         .expect("failed to get ipconfig")
         .stdout;
     String::from_utf8_lossy(&cmd_result)
-        .to_string()
         .split('\n')
         .filter(|line| line.contains("IPv4 Address"))
         .filter_map(|line| line.split(':').nth(1))

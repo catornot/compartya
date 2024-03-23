@@ -66,9 +66,9 @@ impl ImguiRenderLoop for ComPartyaHud {
             .build(|| {
                 if let Some(uid) = self.lobby_uid.as_ref() {
                     if self.hosting_lobby {
-                        ui.text(&format!("Hosting Lobby: {}", uid));
+                        ui.text(format!("Hosting Lobby: {}", uid));
                     } else {
-                        ui.text(&format!("Connected to Party: {}", uid));
+                        ui.text(format!("Connected to Party: {}", uid));
                     }
                 } else if self.hosting_lobby {
                     ui.text("Hosting Lobby: Without STUN server connection");

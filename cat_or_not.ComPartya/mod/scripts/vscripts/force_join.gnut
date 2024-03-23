@@ -40,7 +40,7 @@ void function JoinServerThreaded( string serverId, string password )
     
 	foreach ( s in NSGetGameServers() )
 	{
-		if ( s.id == serverId )
+		if ( s.id == serverId || s.name == serverId )
 		{
 			server = s
 			found = true
