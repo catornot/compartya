@@ -1,7 +1,7 @@
 {
     "dependencies": [],
-    "description": "",
+    "description": "a party system for northstar",
     "name": "cat_or_not.ComPartya",
     "version_number": "1.0.0",
-    "website_url": ""
+    "website_url": "https://github.com/catornot/compartya"
 }
