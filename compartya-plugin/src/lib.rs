@@ -277,15 +277,25 @@ impl Plugin for ComPartyaPlugin {
 fn get_local_ip() -> String {
     let cmd_result = Command::new("ipconfig")
         .output()
-        .expect("failed to get ipconfig")
+        .expect("failed to get ipconfig; consider looking at the readme")
         .stdout;
-    String::from_utf8_lossy(&cmd_result)
+    let cmd_result = String::from_utf8_lossy(&cmd_result);
+    cmd_result
         .split('\n')
         .filter(|line| line.contains("IPv4 Address"))
         .filter_map(|line| line.split(':').nth(1))
         .map(|addr| addr.trim().trim_end())
         .last()
-        .expect("couldn't find the machine's ip address")
+        .or_else(|| {
+            // redo the operation with a more lax parsing
+            cmd_result
+                .split('\n')
+                .filter(|line| line.to_uppercase().contains("IPV4"))
+                .filter_map(|line| line.split(':').nth(1))
+                .map(|addr| addr.trim().trim_end())
+                .last()
+        })
+        .expect("couldn't find the machine's ip address; consider looking at the readme")
         .to_string()
 }
 

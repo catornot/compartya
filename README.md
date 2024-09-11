@@ -20,3 +20,21 @@ it's registered when running the game with administrator privileges
 
 then can access with the compartya `uri`
 `compartya::\open:{server id or name here}`
+
+# Ip addresses
+
+compartya handles public ips automatically w/ a stun server and local ip is resolved w/ `ipconfig` which can fail in certains
+
+the default port is `12352`
+
+## overwriting
+| **command line arg** | **value**    |
+| :------------------: | :----------: |
+| `compartya_ip`       | ip           |
+| `compartya_port`     | port         |
+
+**example:**
+
+```bash
+NorthstarLauncher.exe -multiple compartya_ip 127.0.0.1 compartya_port 12352
+```
